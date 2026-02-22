@@ -7,7 +7,7 @@
     "url": "https://github.com/stucchi/mcp-advisor",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "websiteUrl": "https://mcpadvisor.stucchi.consulting",
   "icons": [
     {
@@ -20,7 +20,7 @@
     {
       "registryType": "pypi",
       "identifier": "mcp-advisor",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "transport": {
         "type": "stdio"
       }
