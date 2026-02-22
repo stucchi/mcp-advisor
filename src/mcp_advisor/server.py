@@ -32,8 +32,8 @@ def main():
     )
     parser.add_argument(
         "--api-url",
-        default="https://mcpadvisor.com",
-        help="Base URL of the MCP Advisor API (default: https://mcpadvisor.com)",
+        default="https://mcpadvisor.stucchi.consulting",
+        help="Base URL of the MCP Advisor API (default: https://mcpadvisor.stucchi.consulting)",
     )
     parser.add_argument(
         "--api-token",

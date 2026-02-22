@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.stucchi/mcp-advisor",
+  "title": "MCP Advisor",
+  "description": "Browse, search, and discover MCP servers from your AI assistant",
+  "repository": {
+    "url": "https://github.com/stucchi/mcp-advisor",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "websiteUrl": "https://mcpadvisor.stucchi.consulting",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/stucchi/mcp-advisor/main/assets/icon.png",
+      "mimeType": "image/png",
+      "sizes": ["1024x1024"]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-advisor",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
