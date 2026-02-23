@@ -1,6 +1,6 @@
 [project]
 name = "mcp-advisor"
-version = "0.2.2"
+version = "0.2.3"
 description = "MCP server to browse, search, and discover MCP servers from the MCP Advisor registry"
 requires-python = ">=3.11"
 license = "MIT"

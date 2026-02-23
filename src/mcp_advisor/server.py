@@ -21,6 +21,7 @@ def build_server(api_url: str, api_token: str | None = None) -> FastMCP:
     mcp.tool(name="get_trending_servers")(tools.get_trending_servers)
     mcp.tool(name="get_registry_stats")(tools.get_registry_stats)
     mcp.tool(name="browse_tags")(tools.browse_tags)
+    mcp.tool(name="track_install")(tools.track_install)
 
     return mcp
 

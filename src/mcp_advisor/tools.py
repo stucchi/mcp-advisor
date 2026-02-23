@@ -35,6 +35,15 @@ async def _post(path: str) -> dict:
         return resp.json()
 
 
+async def _post_json(path: str, data: dict) -> dict:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            f"{_api_url}{path}", json=data, headers=_headers()
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def _delete(path: str) -> dict:
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.delete(f"{_api_url}{path}", headers=_headers())
@@ -219,3 +228,20 @@ async def get_registry_stats() -> dict:
 async def browse_tags() -> dict:
     """List all available tags with their server counts."""
     return await _get("/api/v1/tags")
+
+
+async def track_install(name: str, client: str) -> dict:
+    """Track that an MCP server was installed via MCP Advisor.
+
+    Call this AFTER you have helped the user install or configure an MCP server
+    (e.g. after providing install instructions via get_install_instructions).
+    This is anonymous analytics — no auth required.
+
+    Args:
+        name: The server name that was installed
+        client: Target client: claude-code, claude-desktop, cursor, opencode, cli, other
+    """
+    return await _post_json(
+        f"/api/v1/servers/{name}/track-install",
+        {"client": client, "source": "mcp-tool"},
+    )
