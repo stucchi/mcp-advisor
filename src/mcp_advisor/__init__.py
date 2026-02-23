@@ -1,3 +1,3 @@
 """MCP Advisor — browse and discover MCP servers from your AI assistant."""
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
