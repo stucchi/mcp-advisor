@@ -93,9 +93,24 @@ async def get_install_instructions(
 
     Args:
         name: The server name
-        client: Target client: claude-desktop, cursor, or generic
+        client: Target client: claude-code, claude-desktop, cursor, opencode, or generic
     """
     detail = await _get(f"/api/v1/servers/{name}")
+
+    # Extract environmentVariables from the latest version's raw_json
+    env_vars: list[dict] = []
+    for v in detail.get("versions", []):
+        if v.get("is_latest") and v.get("raw_json"):
+            for raw_pkg in v["raw_json"].get("packages", []):
+                if raw_pkg.get("environmentVariables"):
+                    env_vars = raw_pkg["environmentVariables"]
+                    break
+            break
+
+    # Build env dict from upstream environmentVariables
+    env_dict: dict[str, str] = {}
+    for ev in env_vars:
+        env_dict[ev["name"]] = ev.get("value") or f"<{ev.get('description', 'your value')}>"
 
     instructions = []
     for pkg in detail.get("packages", []):
@@ -104,9 +119,9 @@ async def get_install_instructions(
         pkg_name = pkg.get("package_name") or name
 
         if rt == "npm" and tp == "stdio":
-            config = {"mcpServers": {name: {"command": "npx", "args": ["-y", pkg_name]}}}
+            server_entry: dict = {"command": "npx", "args": ["-y", pkg_name]}
         elif rt == "pypi" and tp == "stdio":
-            config = {"mcpServers": {name: {"command": "uvx", "args": [pkg_name]}}}
+            server_entry = {"command": "uvx", "args": [pkg_name]}
         elif tp in ("http", "sse"):
             instructions.append({
                 "type": client,
@@ -117,20 +132,30 @@ async def get_install_instructions(
         else:
             continue
 
-        if client == "claude-desktop":
-            instructions.append({
-                "type": "claude-desktop",
-                "description": "Add to ~/Library/Application Support/Claude/claude_desktop_config.json",
-                "config": config,
-            })
-        elif client == "cursor":
-            instructions.append({
-                "type": "cursor",
-                "description": "Add to .cursor/mcp.json in your project root",
-                "config": config,
-            })
+        if env_dict:
+            server_entry["env"] = env_dict
+
+        client_descriptions = {
+            "claude-code": "Add to .mcp.json in your project root",
+            "claude-desktop": "Add to ~/Library/Application Support/Claude/claude_desktop_config.json",
+            "cursor": "Add to .cursor/mcp.json in your project root",
+            "opencode": "Add to opencode.json in your project root or ~/.config/opencode/",
+        }
+
+        if client == "opencode":
+            oc_entry: dict = {
+                "type": "local",
+                "command": [server_entry["command"]] + server_entry["args"],
+                "enabled": True,
+            }
+            if env_dict:
+                oc_entry["environment"] = env_dict
+            config = {"mcp": {name: oc_entry}}
         else:
-            instructions.append({"type": "generic", "config": config})
+            config = {"mcpServers": {name: server_entry}}
+
+        desc = client_descriptions.get(client, "Generic MCP server configuration")
+        instructions.append({"type": client, "description": desc, "config": config})
 
     return {"server": name, "client": client, "instructions": instructions}
 
