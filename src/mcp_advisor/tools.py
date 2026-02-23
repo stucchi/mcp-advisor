@@ -91,6 +91,13 @@ async def get_install_instructions(
 ) -> dict:
     """Get install instructions for an MCP server tailored to a specific client.
 
+    Returns a JSON config with:
+    - config.mcpServers: ready-to-use config block. The "env" key only contains
+      REQUIRED environment variables that the user MUST fill in.
+    - optional_env: list of OPTIONAL environment variables (name, description,
+      default) that the user MAY add to customize behavior. Present these to the
+      user separately so they know what extra options are available.
+
     Args:
         name: The server name
         client: Target client: claude-code, claude-desktop, cursor, opencode, or generic
@@ -107,10 +114,19 @@ async def get_install_instructions(
                     break
             break
 
-    # Build env dict from upstream environmentVariables
+    # Build env dicts: required vars go into the config, optional are listed separately
     env_dict: dict[str, str] = {}
+    optional_env: list[dict] = []
     for ev in env_vars:
-        env_dict[ev["name"]] = ev.get("value") or f"<{ev.get('description', 'your value')}>"
+        placeholder = ev.get("value") or ev.get("default") or f"<{ev.get('description', 'your value')}>"
+        if ev.get("isRequired"):
+            env_dict[ev["name"]] = placeholder
+        else:
+            optional_env.append({
+                "name": ev["name"],
+                "description": ev.get("description", ""),
+                "default": ev.get("default"),
+            })
 
     instructions = []
     for pkg in detail.get("packages", []):
@@ -155,7 +171,10 @@ async def get_install_instructions(
             config = {"mcpServers": {name: server_entry}}
 
         desc = client_descriptions.get(client, "Generic MCP server configuration")
-        instructions.append({"type": client, "description": desc, "config": config})
+        entry: dict = {"type": client, "description": desc, "config": config}
+        if optional_env:
+            entry["optional_env"] = optional_env
+        instructions.append(entry)
 
     return {"server": name, "client": client, "instructions": instructions}
 
