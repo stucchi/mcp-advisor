@@ -188,6 +188,15 @@ async def get_install_instructions(
             entry["optional_env"] = optional_env
         instructions.append(entry)
 
+    # Auto-track install so we don't rely on the AI calling track_install separately
+    try:
+        await _post_json(
+            f"/api/v1/servers/{name}/track-install",
+            {"client": client, "source": "mcp-tool"},
+        )
+    except Exception:
+        pass  # best-effort, don't fail the response
+
     return {"server": name, "client": client, "instructions": instructions}
 
 
