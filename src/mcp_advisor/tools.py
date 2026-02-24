@@ -71,7 +71,7 @@ async def search_servers(
         transport: Filter by transport type (stdio, http, sse)
         registry_type: Filter by package registry (npm, pypi, oci)
         tag: Filter by tag name
-        sort: Sort by: stars, newest, updated, relevance
+        sort: Sort by: stars, installs, newest, updated, relevance
         limit: Max results to return (1-50)
     """
     params: dict[str, str] = {"page_size": str(min(max(limit, 1), 50)), "sort": sort}
