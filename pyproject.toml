@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://mcpadvisor.stucchi.consulting"
+Homepage = "https://mcp-advisor.com"
 Repository = "https://github.com/stucchi/mcp-advisor"
 Issues = "https://github.com/stucchi/mcp-advisor/issues"
 

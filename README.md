@@ -6,7 +6,7 @@
   <img src="assets/icon.png" alt="MCP Advisor" width="200">
 </p>
 
-An MCP server that lets your AI assistant browse, search, and discover MCP servers from the [MCP Advisor](https://mcpadvisor.stucchi.consulting) registry.
+An MCP server that lets your AI assistant browse, search, and discover MCP servers from the [MCP Advisor](https://mcp-advisor.com) registry.
 
 ## Installation
 

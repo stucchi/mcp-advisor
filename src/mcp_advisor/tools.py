@@ -2,7 +2,7 @@
 import httpx
 
 # Configured at startup via `configure()`
-_api_url: str = "https://mcpadvisor.stucchi.consulting"
+_api_url: str = "https://mcp-advisor.com"
 _api_token: str | None = None
 
 
