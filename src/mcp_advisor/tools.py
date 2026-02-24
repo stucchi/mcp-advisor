@@ -137,6 +137,9 @@ async def get_install_instructions(
                 "default": ev.get("default"),
             })
 
+    # Use short name (after /) for config keys — e.g. "mcp-advisor" not "io.github.stucchi/mcp-advisor"
+    short_name = name.rsplit("/", 1)[-1] if "/" in name else name
+
     instructions = []
     for pkg in detail.get("packages", []):
         rt = pkg.get("registry_type", "")
@@ -175,9 +178,9 @@ async def get_install_instructions(
             }
             if env_dict:
                 oc_entry["environment"] = env_dict
-            config = {"mcp": {name: oc_entry}}
+            config = {"mcp": {short_name: oc_entry}}
         else:
-            config = {"mcpServers": {name: server_entry}}
+            config = {"mcpServers": {short_name: server_entry}}
 
         desc = client_descriptions.get(client, "Generic MCP server configuration")
         entry: dict = {"type": client, "description": desc, "config": config}
