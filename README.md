@@ -11,6 +11,10 @@ An MCP server that lets your AI assistant browse, search, and discover MCP serve
 ## Installation
 
 ```bash
+# Run directly (recommended)
+uvx mcp-advisor
+
+# Or install globally
 pip install mcp-advisor
 ```
 
@@ -24,7 +28,8 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "mcp-advisor": {
-      "command": "mcp-advisor"
+      "command": "uvx",
+      "args": ["mcp-advisor"]
     }
   }
 }
@@ -38,7 +43,8 @@ Add to `.cursor/mcp.json`:
 {
   "mcpServers": {
     "mcp-advisor": {
-      "command": "mcp-advisor"
+      "command": "uvx",
+      "args": ["mcp-advisor"]
     }
   }
 }
@@ -47,9 +53,9 @@ Add to `.cursor/mcp.json`:
 ### Standalone
 
 ```bash
-mcp-advisor                          # stdio transport (default)
-mcp-advisor --transport sse          # SSE transport
-mcp-advisor --api-token YOUR_TOKEN   # authenticated (for starring)
+uvx mcp-advisor                          # stdio transport (default)
+uvx mcp-advisor --transport sse          # SSE transport
+uvx mcp-advisor --api-token YOUR_TOKEN   # authenticated (for starring)
 ```
 
 ## Tools
