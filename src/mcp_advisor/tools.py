@@ -1,5 +1,8 @@
 """MCP tool implementations — calls the MCP Advisor REST API over HTTP."""
+import json
+
 import httpx
+from mcp import types
 
 # Configured at startup via `configure()`
 _api_url: str = "https://mcp-advisor.com"
@@ -63,7 +66,7 @@ async def search_servers(
     tag: str | None = None,
     sort: str = "stars",
     limit: int = 10,
-) -> dict:
+) -> types.CallToolResult:
     """Search for MCP servers with optional filters.
 
     Args:
@@ -83,16 +86,39 @@ async def search_servers(
         params["registry_type"] = registry_type
     if tag:
         params["tag"] = tag
-    return await _get("/api/v1/servers", params)
+    data = await _get("/api/v1/servers", params)
+    structured = dict(data)
+    if query:
+        structured["query"] = query
+    return types.CallToolResult(
+        content=[types.TextContent(type="text", text=json.dumps(data, indent=2))],
+        structuredContent=structured,
+    )
 
 
-async def get_server_details(name: str) -> dict:
+async def get_server_details(name: str) -> types.CallToolResult:
     """Get detailed information about a specific MCP server.
 
     Args:
         name: The server name (e.g., 'io.github.org/my-server')
     """
-    return await _get(f"/api/v1/servers/{name}")
+    data = await _get(f"/api/v1/servers/{name}")
+    # Strip raw_json from versions to keep structured_content payload small
+    structured = dict(data)
+    if "versions" in structured:
+        structured["versions"] = [
+            {k: v for k, v in ver.items() if k != "raw_json"}
+            for ver in structured["versions"]
+        ]
+
+    content: list[types.TextContent | types.ImageContent] = [
+        types.TextContent(type="text", text=json.dumps(data, indent=2)),
+    ]
+
+    return types.CallToolResult(
+        content=content,
+        structuredContent=structured,
+    )
 
 
 async def get_install_instructions(
@@ -178,7 +204,7 @@ async def get_install_instructions(
             }
             if env_dict:
                 oc_entry["environment"] = env_dict
-            config = {"mcp": {short_name: oc_entry}}
+            config = {"$schema": "https://opencode.ai/config.json", "mcp": {short_name: oc_entry}}
         else:
             config = {"mcpServers": {short_name: server_entry}}
 
@@ -223,13 +249,17 @@ async def list_starred_servers() -> dict:
     return await _get("/api/v1/me/stars")
 
 
-async def get_trending_servers(limit: int = 10) -> dict:
+async def get_trending_servers(limit: int = 10) -> types.CallToolResult:
     """Get trending MCP servers sorted by star count and recent activity.
 
     Args:
         limit: Max results (1-50)
     """
-    return await _get("/api/v1/servers/trending", {"limit": str(min(max(limit, 1), 50))})
+    data = await _get("/api/v1/servers/trending", {"limit": str(min(max(limit, 1), 50))})
+    return types.CallToolResult(
+        content=[types.TextContent(type="text", text=json.dumps(data, indent=2))],
+        structuredContent=data,
+    )
 
 
 async def get_registry_stats() -> dict:
