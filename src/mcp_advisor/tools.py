@@ -223,7 +223,20 @@ async def get_install_instructions(
     except Exception:
         pass  # best-effort, don't fail the response
 
-    return {"server": name, "client": client, "instructions": instructions}
+    # Check for security warnings
+    security_warning = None
+    security = detail.get("security")
+    if security and security.get("risk_level") in ("high", "critical"):
+        security_warning = (
+            f"WARNING: This server has a {security['risk_level'].upper()} security risk level "
+            f"with {security.get('findings_count', 0)} finding(s) detected by mcp-scan. "
+            f"Review the security scan results before installing."
+        )
+
+    result: dict = {"server": name, "client": client, "instructions": instructions}
+    if security_warning:
+        result["security_warning"] = security_warning
+    return result
 
 
 async def star_server(name: str) -> dict:
@@ -270,6 +283,19 @@ async def get_registry_stats() -> dict:
 async def browse_tags() -> dict:
     """List all available tags with their server counts."""
     return await _get("/api/v1/tags")
+
+
+async def get_security_scan(name: str) -> dict:
+    """Get security scan results for an MCP server.
+
+    Returns the latest security scan including risk level, individual findings
+    with codes and descriptions, and scan metadata. Use this to check if a
+    server has known security issues like tool poisoning or prompt injection.
+
+    Args:
+        name: The server name (e.g., 'io.github.org/my-server')
+    """
+    return await _get(f"/api/v1/security/servers/{name}/scan")
 
 
 async def track_install(name: str, client: str) -> dict:

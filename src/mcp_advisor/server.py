@@ -4,6 +4,10 @@ import argparse
 from mcp.server.fastmcp import FastMCP
 
 from mcp_advisor import tools
+from mcp_advisor.views import DETAIL_VIEW_HTML, SEARCH_VIEW_HTML
+
+_SEARCH_VIEW_URI = "ui://mcp-advisor/search.html"
+_DETAIL_VIEW_URI = "ui://mcp-advisor/detail.html"
 
 
 def build_server(api_url: str, api_token: str | None = None) -> FastMCP:
@@ -12,13 +16,49 @@ def build_server(api_url: str, api_token: str | None = None) -> FastMCP:
 
     mcp = FastMCP("MCP Advisor")
 
-    mcp.tool(name="search_servers")(tools.search_servers)
-    mcp.tool(name="get_server_details")(tools.get_server_details)
+    # --- UI resources ---------------------------------------------------
+    _csp = {"resourceDomains": [
+        "https://unpkg.com",
+        "https://raw.githubusercontent.com",
+        "https://avatars.githubusercontent.com",
+    ]}
+
+    @mcp.resource(
+        _SEARCH_VIEW_URI,
+        mime_type="text/html;profile=mcp-app",
+        meta={"ui": {"csp": _csp}},
+    )
+    def search_view() -> str:
+        return SEARCH_VIEW_HTML
+
+    @mcp.resource(
+        _DETAIL_VIEW_URI,
+        mime_type="text/html;profile=mcp-app",
+        meta={"ui": {"csp": _csp}},
+    )
+    def detail_view() -> str:
+        return DETAIL_VIEW_HTML
+
+    # --- Tools with UI --------------------------------------------------
+    _search_meta = {
+        "ui": {"resourceUri": _SEARCH_VIEW_URI},
+        "ui/resourceUri": _SEARCH_VIEW_URI,
+    }
+    _detail_meta = {
+        "ui": {"resourceUri": _DETAIL_VIEW_URI},
+        "ui/resourceUri": _DETAIL_VIEW_URI,
+    }
+
+    mcp.tool(name="search_servers", meta=_search_meta)(tools.search_servers)
+    mcp.tool(name="get_server_details", meta=_detail_meta)(tools.get_server_details)
+    mcp.tool(name="get_trending_servers", meta=_search_meta)(tools.get_trending_servers)
+
+    # --- Tools without UI -----------------------------------------------
     mcp.tool(name="get_install_instructions")(tools.get_install_instructions)
     mcp.tool(name="star_server")(tools.star_server)
     mcp.tool(name="unstar_server")(tools.unstar_server)
     mcp.tool(name="list_starred_servers")(tools.list_starred_servers)
-    mcp.tool(name="get_trending_servers")(tools.get_trending_servers)
+    mcp.tool(name="get_security_scan")(tools.get_security_scan)
     mcp.tool(name="get_registry_stats")(tools.get_registry_stats)
     mcp.tool(name="browse_tags")(tools.browse_tags)
     mcp.tool(name="track_install")(tools.track_install)
