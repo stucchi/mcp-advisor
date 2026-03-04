@@ -111,6 +111,15 @@ async def get_server_details(name: str) -> types.CallToolResult:
             for ver in structured["versions"]
         ]
 
+    # Fetch security scan findings if a completed scan exists
+    if structured.get("security") and structured["security"].get("status") == "completed":
+        try:
+            scan = await _get(f"/api/v1/security/servers/{name}/scan")
+            structured["security"]["issues"] = scan.get("issues", [])
+            structured["security"]["tools_count"] = scan.get("tools_count", 0)
+        except Exception:
+            pass  # best-effort
+
     content: list[types.TextContent | types.ImageContent] = [
         types.TextContent(type="text", text=json.dumps(data, indent=2)),
     ]

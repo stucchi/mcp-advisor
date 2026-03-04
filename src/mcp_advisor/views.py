@@ -546,6 +546,72 @@ DETAIL_VIEW_HTML = """\
     margin-bottom: 4px;
   }
 
+  .findings {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .finding {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: light-dark(#fafafa, #1c1c1e);
+    border: 1px solid light-dark(#e4e4e7, #3f3f46);
+    font-size: 12px;
+  }
+
+  .finding-icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    margin-top: 1px;
+  }
+
+  .finding-icon.critical, .finding-icon.high {
+    background: light-dark(#fef2f2, #450a0a);
+    color: light-dark(#dc2626, #fca5a5);
+  }
+
+  .finding-icon.medium {
+    background: light-dark(#fff7ed, #431407);
+    color: light-dark(#c2410c, #fb923c);
+  }
+
+  .finding-icon.low {
+    background: light-dark(#fefce8, #422006);
+    color: light-dark(#a16207, #facc15);
+  }
+
+  .finding-body { flex: 1; min-width: 0; }
+
+  .finding-type {
+    font-weight: 600;
+    color: light-dark(#1a1a2e, #e4e4e7);
+    margin-bottom: 2px;
+  }
+
+  .finding-desc {
+    color: light-dark(#52525b, #a1a1aa);
+    line-height: 1.4;
+  }
+
+  .finding-tool {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: light-dark(#71717a, #a1a1aa);
+    margin-top: 3px;
+  }
+
   /* Tags */
   .tags-section {
     padding: 0 16px 14px;
@@ -701,10 +767,38 @@ function render(data) {
     if (sec.findings_count > 0) {
       html += '<span>' + sec.findings_count + ' finding' + (sec.findings_count !== 1 ? 's' : '') + '</span>';
     }
+    if (sec.tools_count > 0) {
+      html += '<span>&middot; ' + sec.tools_count + ' tool' + (sec.tools_count !== 1 ? 's' : '') + ' scanned</span>';
+    }
     html += '</div>';
     if (sec.scanned_version) {
       html += '<div class="security-row" style="font-size:11px;color:light-dark(#a1a1aa,#71717a)">Scanned version ' + esc(sec.scanned_version) + '</div>';
     }
+
+    /* Individual findings */
+    var issues = sec.issues || [];
+    if (issues.length > 0) {
+      html += '<div class="findings">';
+      for (var fi = 0; fi < issues.length; fi++) {
+        var issue = issues[fi];
+        var sev = (issue.severity || 'low').toLowerCase();
+        var typeLabel = (issue.type || 'unknown').replace(/_/g, ' ');
+        typeLabel = typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1);
+        html += '<div class="finding">' +
+          '<div class="finding-icon ' + esc(sev) + '">&#9888;</div>' +
+          '<div class="finding-body">' +
+            '<div class="finding-type">' + esc(typeLabel) + ' <span class="badge ' + esc('sec-' + sev) + '" style="font-size:9px">' + esc(sev) + '</span></div>';
+        if (issue.description) {
+          html += '<div class="finding-desc">' + esc(issue.description) + '</div>';
+        }
+        if (issue.tool) {
+          html += '<div class="finding-tool">Tool: ' + esc(issue.tool) + '</div>';
+        }
+        html += '</div></div>';
+      }
+      html += '</div>';
+    }
+
     html += '</div>';
   }
 
