@@ -1,62 +1,150 @@
-"""MCP tool implementations — calls the MCP Advisor REST API over HTTP."""
+"""MCP tool implementations — served from a static JSON snapshot.
+
+The registry data is a set of static JSON files (index.json, stats.json,
+trending.json, meta.json) published to GitHub Pages and refreshed by a scheduled
+job. There is no backend server: all search/detail/install logic runs locally in
+this process over the downloaded snapshot, which is cached on disk with a TTL so
+only the first call in a while pays the download.
+
+`--data-url` may point at an http(s) base (default) or a local directory / file://
+URL (handy for testing against a freshly built snapshot).
+"""
 import json
+import tempfile
+import time
+from pathlib import Path
 
 import httpx
 from mcp import types
 
 # Configured at startup via `configure()`
-_api_url: str = "https://mcp-advisor.com"
-_api_token: str | None = None
+_data_url: str = "https://mcp-advisor.com/data"
+_cache_ttl: float = 6 * 3600  # 6 hours
+_cache_dir: Path = Path(tempfile.gettempdir()) / "mcp-advisor-cache"
+
+# In-memory cache: filename -> (loaded_at, data)
+_mem: dict[str, tuple[float, object]] = {}
 
 
-def configure(api_url: str, api_token: str | None = None):
-    global _api_url, _api_token
-    _api_url = api_url.rstrip("/")
-    _api_token = api_token
+def configure(data_url: str, cache_ttl: float | None = None):
+    global _data_url, _cache_ttl, _mem
+    _data_url = data_url.rstrip("/")
+    if cache_ttl is not None:
+        _cache_ttl = cache_ttl
+    _mem = {}
 
 
-def _headers() -> dict[str, str]:
-    h: dict[str, str] = {}
-    if _api_token:
-        h["Authorization"] = f"Bearer {_api_token}"
-    return h
+# ---------------------------------------------------------------------------
+# Snapshot loading (http(s) with on-disk TTL cache, or local path / file://)
+# ---------------------------------------------------------------------------
 
 
-async def _get(path: str, params: dict | None = None) -> dict:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(
-            f"{_api_url}{path}", params=params, headers=_headers()
-        )
+def _local_base() -> Path | None:
+    if _data_url.startswith(("http://", "https://")):
+        return None
+    if _data_url.startswith("file://"):
+        return Path(_data_url[len("file://"):])
+    return Path(_data_url)
+
+
+async def _fetch(filename: str) -> object:
+    local = _local_base()
+    if local is not None:
+        return json.loads((local / filename).read_text())
+
+    _cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = _cache_dir / filename
+    if cache_file.exists() and time.time() - cache_file.stat().st_mtime < _cache_ttl:
+        try:
+            return json.loads(cache_file.read_text())
+        except (OSError, ValueError):
+            pass  # fall through and re-fetch on any cache read problem
+
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        resp = await client.get(f"{_data_url}/{filename}")
         resp.raise_for_status()
-        return resp.json()
+        text = resp.text
+    try:
+        cache_file.write_text(text)
+    except OSError:
+        pass  # cache is best-effort
+    return json.loads(text)
 
 
-async def _post(path: str) -> dict:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(f"{_api_url}{path}", headers=_headers())
-        resp.raise_for_status()
-        return resp.json()
+async def _load(filename: str) -> object:
+    now = time.time()
+    cached = _mem.get(filename)
+    if cached and now - cached[0] < _cache_ttl:
+        return cached[1]
+    data = await _fetch(filename)
+    _mem[filename] = (now, data)
+    return data
 
 
-async def _post_json(path: str, data: dict) -> dict:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(
-            f"{_api_url}{path}", json=data, headers=_headers()
-        )
-        resp.raise_for_status()
-        return resp.json()
+async def _index() -> list[dict]:
+    return await _load("index.json")  # type: ignore[return-value]
 
 
-async def _delete(path: str) -> dict:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.delete(f"{_api_url}{path}", headers=_headers())
-        resp.raise_for_status()
-        return resp.json()
+def _public(server: dict) -> dict:
+    """Add backward-compatible aliases expected by the embedded UI views."""
+    out = dict(server)
+    out["stars"] = server.get("github_stars")
+    out["repo_url"] = server.get("repository_url")
+    out["homepage_url"] = server.get("website_url")
+    out["created_at"] = server.get("published_at")
+    if server.get("latest_version") and "versions" not in out:
+        out["versions"] = [
+            {
+                "version": server["latest_version"],
+                "is_latest": True,
+                "published_at": server.get("published_at"),
+            }
+        ]
+    return out
 
 
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
+
+
+def _matches(server: dict, query: str | None, transport: str | None,
+             registry_type: str | None, tag: str | None) -> bool:
+    if query:
+        haystack = " ".join(
+            str(server.get(f) or "") for f in ("name", "title", "description")
+        ).lower()
+        if not all(tok in haystack for tok in query.lower().split()):
+            return False
+    pkgs = server.get("packages", [])
+    if transport and not any(p.get("transport") == transport for p in pkgs):
+        return False
+    if registry_type and not any(p.get("registry_type") == registry_type for p in pkgs):
+        return False
+    if tag and tag not in (server.get("tags") or []):
+        return False
+    return True
+
+
+def _sort_key(sort: str, query: str | None):
+    if sort in ("stars", "installs"):
+        return lambda s: (s.get("github_stars") or 0, s.get("updated_at") or ""), True
+    if sort == "newest":
+        return lambda s: s.get("published_at") or "", True
+    if sort == "updated":
+        return lambda s: s.get("updated_at") or "", True
+    if sort == "relevance" and query:
+        q = query.lower()
+        def score(s: dict):
+            name = (s.get("name") or "").lower()
+            title = (s.get("title") or "").lower()
+            if q == name or q == title:
+                return 3
+            if q in name or q in title:
+                return 2
+            return 1
+        return score, True
+    return lambda s: s.get("name") or "", False
 
 
 async def search_servers(
@@ -74,25 +162,23 @@ async def search_servers(
         transport: Filter by transport type (stdio, http, sse)
         registry_type: Filter by package registry (npm, pypi, oci)
         tag: Filter by tag name
-        sort: Sort by: stars, installs, newest, updated, relevance
+        sort: Sort by: stars, newest, updated, relevance
         limit: Max results to return (1-50)
     """
-    params: dict[str, str] = {"page_size": str(min(max(limit, 1), 50)), "sort": sort}
+    limit = min(max(limit, 1), 50)
+    servers = await _index()
+    matched = [s for s in servers if _matches(s, query, transport, registry_type, tag)]
+
+    key, reverse = _sort_key(sort, query)
+    matched.sort(key=key, reverse=reverse)
+
+    results = [_public(s) for s in matched[:limit]]
+    data: dict = {"servers": results, "total": len(matched)}
     if query:
-        params["q"] = query
-    if transport:
-        params["transport"] = transport
-    if registry_type:
-        params["registry_type"] = registry_type
-    if tag:
-        params["tag"] = tag
-    data = await _get("/api/v1/servers", params)
-    structured = dict(data)
-    if query:
-        structured["query"] = query
+        data["query"] = query
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=json.dumps(data, indent=2))],
-        structuredContent=structured,
+        structuredContent=data,
     )
 
 
@@ -102,31 +188,19 @@ async def get_server_details(name: str) -> types.CallToolResult:
     Args:
         name: The server name (e.g., 'io.github.org/my-server')
     """
-    data = await _get(f"/api/v1/servers/{name}")
-    # Strip raw_json from versions to keep structured_content payload small
-    structured = dict(data)
-    if "versions" in structured:
-        structured["versions"] = [
-            {k: v for k, v in ver.items() if k != "raw_json"}
-            for ver in structured["versions"]
-        ]
-
-    # Fetch security scan findings if a completed scan exists
-    if structured.get("security") and structured["security"].get("status") == "completed":
-        try:
-            scan = await _get(f"/api/v1/security/servers/{name}/scan")
-            structured["security"]["issues"] = scan.get("issues", [])
-            structured["security"]["tools_count"] = scan.get("tools_count", 0)
-        except Exception:
-            pass  # best-effort
-
-    content: list[types.TextContent | types.ImageContent] = [
-        types.TextContent(type="text", text=json.dumps(data, indent=2)),
-    ]
-
+    servers = await _index()
+    match = next((s for s in servers if s.get("name") == name), None)
+    if match is None:
+        data: dict = {"error": f"Server not found: {name}"}
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=json.dumps(data, indent=2))],
+            structuredContent=data,
+            isError=True,
+        )
+    data = _public(match)
     return types.CallToolResult(
-        content=content,
-        structuredContent=structured,
+        content=[types.TextContent(type="text", text=json.dumps(data, indent=2))],
+        structuredContent=data,
     )
 
 
@@ -146,19 +220,20 @@ async def get_install_instructions(
         name: The server name
         client: Target client: claude-code, claude-desktop, cursor, opencode, or generic
     """
-    detail = await _get(f"/api/v1/servers/{name}")
+    servers = await _index()
+    detail = next((s for s in servers if s.get("name") == name), None)
+    if detail is None:
+        return {"error": f"Server not found: {name}", "server": name, "client": client}
 
-    # Extract environmentVariables from the latest version's raw_json
+    packages = detail.get("packages", [])
+
+    # Environment variables come from the first package that declares any.
     env_vars: list[dict] = []
-    for v in detail.get("versions", []):
-        if v.get("is_latest") and v.get("raw_json"):
-            for raw_pkg in v["raw_json"].get("packages", []):
-                if raw_pkg.get("environmentVariables"):
-                    env_vars = raw_pkg["environmentVariables"]
-                    break
+    for pkg in packages:
+        if pkg.get("environment_variables"):
+            env_vars = pkg["environment_variables"]
             break
 
-    # Build env dicts: required vars go into the config, optional are listed separately
     env_dict: dict[str, str] = {}
     optional_env: list[dict] = []
     for ev in env_vars:
@@ -172,11 +247,11 @@ async def get_install_instructions(
                 "default": ev.get("default"),
             })
 
-    # Use short name (after /) for config keys — e.g. "mcp-advisor" not "io.github.stucchi/mcp-advisor"
+    # Use short name (after /) for config keys — e.g. "mcp-advisor".
     short_name = name.rsplit("/", 1)[-1] if "/" in name else name
 
     instructions = []
-    for pkg in detail.get("packages", []):
+    for pkg in packages:
         rt = pkg.get("registry_type", "")
         tp = pkg.get("transport", "")
         pkg_name = pkg.get("package_name") or name
@@ -223,61 +298,19 @@ async def get_install_instructions(
             entry["optional_env"] = optional_env
         instructions.append(entry)
 
-    # Auto-track install so we don't rely on the AI calling track_install separately
-    try:
-        await _post_json(
-            f"/api/v1/servers/{name}/track-install",
-            {"client": client, "source": "mcp-tool"},
-        )
-    except Exception:
-        pass  # best-effort, don't fail the response
-
-    # Check for security warnings
-    security_warning = None
-    security = detail.get("security")
-    if security and security.get("risk_level") in ("high", "critical"):
-        security_warning = (
-            f"WARNING: This server has a {security['risk_level'].upper()} security risk level "
-            f"with {security.get('findings_count', 0)} finding(s) detected by mcp-scan. "
-            f"Review the security scan results before installing."
-        )
-
-    result: dict = {"server": name, "client": client, "instructions": instructions}
-    if security_warning:
-        result["security_warning"] = security_warning
-    return result
-
-
-async def star_server(name: str) -> dict:
-    """Star an MCP server (requires authentication via --api-token).
-
-    Args:
-        name: The server name to star
-    """
-    return await _post(f"/api/v1/servers/{name}/star")
-
-
-async def unstar_server(name: str) -> dict:
-    """Remove a star from an MCP server.
-
-    Args:
-        name: The server name to unstar
-    """
-    return await _delete(f"/api/v1/servers/{name}/star")
-
-
-async def list_starred_servers() -> dict:
-    """List your starred MCP servers (requires authentication via --api-token)."""
-    return await _get("/api/v1/me/stars")
+    return {"server": name, "client": client, "instructions": instructions}
 
 
 async def get_trending_servers(limit: int = 10) -> types.CallToolResult:
-    """Get trending MCP servers sorted by star count and recent activity.
+    """Get trending MCP servers ranked by GitHub stars and recent activity.
 
     Args:
         limit: Max results (1-50)
     """
-    data = await _get("/api/v1/servers/trending", {"limit": str(min(max(limit, 1), 50))})
+    limit = min(max(limit, 1), 50)
+    trending = await _load("trending.json")
+    results = [_public(s) for s in trending[:limit]]  # type: ignore[index]
+    data = {"servers": results}
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=json.dumps(data, indent=2))],
         structuredContent=data,
@@ -286,39 +319,17 @@ async def get_trending_servers(limit: int = 10) -> types.CallToolResult:
 
 async def get_registry_stats() -> dict:
     """Get overall statistics about the MCP server registry."""
-    return await _get("/api/v1/stats")
+    stats = await _load("stats.json")
+    meta = await _load("meta.json")
+    return {**stats, "generated_at": meta.get("generated_at")}  # type: ignore[dict-item]
 
 
 async def browse_tags() -> dict:
     """List all available tags with their server counts."""
-    return await _get("/api/v1/tags")
-
-
-async def get_security_scan(name: str) -> dict:
-    """Get security scan results for an MCP server.
-
-    Returns the latest security scan including risk level, individual findings
-    with codes and descriptions, and scan metadata. Use this to check if a
-    server has known security issues like tool poisoning or prompt injection.
-
-    Args:
-        name: The server name (e.g., 'io.github.org/my-server')
-    """
-    return await _get(f"/api/v1/security/servers/{name}/scan")
-
-
-async def track_install(name: str, client: str) -> dict:
-    """Track that an MCP server was installed via MCP Advisor.
-
-    Call this AFTER you have helped the user install or configure an MCP server
-    (e.g. after providing install instructions via get_install_instructions).
-    This is anonymous analytics — no auth required.
-
-    Args:
-        name: The server name that was installed
-        client: Target client: claude-code, claude-desktop, cursor, opencode, cli, other
-    """
-    return await _post_json(
-        f"/api/v1/servers/{name}/track-install",
-        {"client": client, "source": "mcp-tool"},
-    )
+    servers = await _index()
+    counts: dict[str, int] = {}
+    for s in servers:
+        for t in s.get("tags") or []:
+            counts[t] = counts.get(t, 0) + 1
+    tags = [{"name": t, "count": c} for t, c in sorted(counts.items(), key=lambda x: -x[1])]
+    return {"tags": tags}

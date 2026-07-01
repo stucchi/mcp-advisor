@@ -274,7 +274,6 @@ function renderServer(s) {
       (s.description ? '<div class="server-desc">' + esc(s.description) + '</div>' : '') +
       '<div class="server-meta">' +
         '<span class="stat"><span class="stat-icon">&#9733;</span> ' + stars + '</span>' +
-        '<span class="stat"><span class="stat-icon">&#8615;</span> ' + installs + '</span>' +
         secBadge +
         badges +
       '</div>' +
@@ -720,8 +719,7 @@ function render(data) {
 
   /* Stats */
   html += '<div class="stats">' +
-    '<div class="stat-item"><div class="stat-num">' + stars + '</div><div class="stat-label">Stars</div></div>' +
-    '<div class="stat-item"><div class="stat-num">' + installs + '</div><div class="stat-label">Installs</div></div>';
+    '<div class="stat-item"><div class="stat-num">' + stars + '</div><div class="stat-label">Stars</div></div>';
   if (latestVersion) {
     html += '<div class="stat-item"><div class="stat-num" style="font-size:14px">' + esc(latestVersion) + '</div><div class="stat-label">Version</div></div>';
   }

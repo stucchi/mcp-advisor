@@ -10,9 +10,9 @@ _SEARCH_VIEW_URI = "ui://mcp-advisor/search.html"
 _DETAIL_VIEW_URI = "ui://mcp-advisor/detail.html"
 
 
-def build_server(api_url: str, api_token: str | None = None) -> FastMCP:
+def build_server(data_url: str) -> FastMCP:
     """Create and return a configured FastMCP server instance."""
-    tools.configure(api_url, api_token)
+    tools.configure(data_url)
 
     mcp = FastMCP("MCP Advisor")
 
@@ -55,13 +55,8 @@ def build_server(api_url: str, api_token: str | None = None) -> FastMCP:
 
     # --- Tools without UI -----------------------------------------------
     mcp.tool(name="get_install_instructions")(tools.get_install_instructions)
-    mcp.tool(name="star_server")(tools.star_server)
-    mcp.tool(name="unstar_server")(tools.unstar_server)
-    mcp.tool(name="list_starred_servers")(tools.list_starred_servers)
-    mcp.tool(name="get_security_scan")(tools.get_security_scan)
     mcp.tool(name="get_registry_stats")(tools.get_registry_stats)
     mcp.tool(name="browse_tags")(tools.browse_tags)
-    mcp.tool(name="track_install")(tools.track_install)
 
     return mcp
 
@@ -72,14 +67,12 @@ def main():
         description="MCP server to browse, search, and discover MCP servers",
     )
     parser.add_argument(
-        "--api-url",
-        default="https://mcp-advisor.com",
-        help="Base URL of the MCP Advisor API (default: https://mcp-advisor.com)",
-    )
-    parser.add_argument(
-        "--api-token",
-        default=None,
-        help="JWT token for authenticated operations (star/unstar)",
+        "--data-url",
+        "--api-url",  # deprecated alias
+        dest="data_url",
+        default="https://mcp-advisor.com/data",
+        help="Base URL (or local dir) of the registry snapshot "
+             "(default: https://mcp-advisor.com/data)",
     )
     parser.add_argument(
         "--transport",
@@ -89,7 +82,7 @@ def main():
     )
     args = parser.parse_args()
 
-    mcp = build_server(args.api_url, args.api_token)
+    mcp = build_server(args.data_url)
     mcp.run(transport=args.transport)
 
 
