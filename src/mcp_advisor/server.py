@@ -70,9 +70,9 @@ def main():
         "--data-url",
         "--api-url",  # deprecated alias
         dest="data_url",
-        default="https://mcp-advisor.com/data",
+        default="https://stucchi.github.io/mcp-advisor-app/data",
         help="Base URL (or local dir) of the registry snapshot "
-             "(default: https://mcp-advisor.com/data)",
+             "(default: https://stucchi.github.io/mcp-advisor-app/data)",
     )
     parser.add_argument(
         "--transport",
