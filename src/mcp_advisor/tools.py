@@ -18,7 +18,7 @@ import httpx
 from mcp import types
 
 # Configured at startup via `configure()`
-_data_url: str = "https://mcp-advisor.com/data"
+_data_url: str = "https://stucchi.github.io/mcp-advisor-app/data"
 _cache_ttl: float = 6 * 3600  # 6 hours
 _cache_dir: Path = Path(tempfile.gettempdir()) / "mcp-advisor-cache"
 
